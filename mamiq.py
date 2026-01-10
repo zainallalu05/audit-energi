@@ -4,200 +4,260 @@ import math
 import plotly.graph_objects as go
 
 # =====================================================
-# KONFIGURASI HALAMAN
+# 1. DATABASE KOMPONEN LENGKAP
 # =====================================================
-st.set_page_config(
-    page_title="Kalkulator PLTS Pro Lengkap 2026",
-    layout="wide",
-    page_icon="☀"
-)
+# Database Panel Surya
+DB_PANEL = {
+    "Monocrystalline 550 Wp (Tier 1 - Project Grade)": {"wp": 550, "harga": 2100000},
+    "Bifacial 600 Wp (Premium - 2 Sisi)": {"wp": 600, "harga": 2800000},
+    "Monocrystalline 450 Wp (Standar Rumah)": {"wp": 450, "harga": 1750000},
+    "Polycrystalline 330 Wp (Budget)": {"wp": 330, "harga": 1300000},
+}
 
-st.title("☀ Kalkulator PLTS Pro: Solusi Energi Terpadu")
-st.write("Analisis komprehensif konsumsi energi, investasi detail, dan spesifikasi teknis material.")
+# Database Baterai
+DB_BATTERY = {
+    "Lithium LiFePO4 48V 100Ah (Rack Server - Awet)": {"volt": 48, "ah": 100, "dod": 80, "harga": 14500000},
+    "Lithium Pack 12V 100Ah (Residential)": {"volt": 12, "ah": 100, "dod": 80, "harga": 3500000},
+    "Lithium High Volt 10kWh (All-in-One Industrial)": {"volt": 200, "ah": 50, "dod": 90, "harga": 65000000},
+    "VRLA Gel 12V 200Ah (Deep Cycle)": {"volt": 12, "ah": 200, "dod": 50, "harga": 4200000},
+    "OpzV Tubular 2V 1000Ah (Tower Industrial)": {"volt": 2, "ah": 1000, "dod": 60, "harga": 7500000},
+}
+
+# Database Inverter (DITAMBAH OPSI OFF-GRID)
+DB_INVERTER = {
+    # 1 Phase (Rumah/Ruko Kecil)
+    "Hybrid 5kW (1 Phase) - Residential": {"watt": 5000, "phase": 1, "type": "Hybrid", "harga": 9500000},
+    "On-Grid 5kW (1 Phase) - Residential": {"watt": 5000, "phase": 1, "type": "On-Grid", "harga": 8000000},
+    "Off-Grid 3kW (1 Phase) - Villa Kecil": {"watt": 3000, "phase": 1, "type": "Off-Grid", "harga": 4500000},
+    "Off-Grid 5kW (1 Phase) - Rumah Besar": {"watt": 5000, "phase": 1, "type": "Off-Grid", "harga": 7500000}, # BARU
+    
+    # 3 Phase (Kantor/Pabrik/Hotel)
+    "Hybrid 10kW (3 Phase) - Commercial": {"watt": 10000, "phase": 3, "type": "Hybrid", "harga": 28000000},
+    "Hybrid 50kW (3 Phase) - Industrial": {"watt": 50000, "phase": 3, "type": "Hybrid", "harga": 110000000},
+    "On-Grid 10kW (3 Phase) - Office/Ruko": {"watt": 10000, "phase": 3, "type": "On-Grid", "harga": 18000000},
+    "On-Grid 50kW (3 Phase) - Hotel/Pabrik": {"watt": 50000, "phase": 3, "type": "On-Grid", "harga": 65000000},
+    "Off-Grid 10kW (3 Phase) - Remote Area": {"watt": 10000, "phase": 3, "type": "Off-Grid", "harga": 22000000}, # BARU
+}
+
+# Database SCC
+DB_SCC = {
+    "Built-in (Menyatu di Inverter)": {"amp": 0, "harga": 0},
+    "MPPT 60A (External)": {"amp": 60, "harga": 1800000},
+    "MPPT 100A (High Voltage)": {"amp": 100, "harga": 4500000},
+}
+
+# =====================================================
+# 2. SETUP PAGE
+# =====================================================
+st.set_page_config(page_title="Dashboard Investasi PLTS Pro", layout="wide", page_icon="📊")
+st.title("📊 Dashboard Investasi PLTS & Analisis Keuangan")
+st.markdown("Analisis teknis dan finansial lengkap dengan visualisasi data.")
+
+# =====================================================
+# 3. INPUT DATA (BAGIAN ATAS)
+# =====================================================
+with st.expander("⚙️ Konfigurasi Proyek & Bangunan (Klik untuk Edit)", expanded=True):
+    c1, c2, c3, c4 = st.columns(4)
+    
+    with c1:
+        st.subheader("1. Profil Bangunan")
+        tipe_bangunan = st.selectbox("Jenis Properti", ["Rumah Tinggal", "Kantor / Ruko", "Hotel / Villa", "Pabrik / Gudang"])
+        # UPDATED: Menambahkan opsi Off-Grid ke semua rekomendasi
+        if "Kantor" in tipe_bangunan: Rekomen = ["On-Grid (Hemat Siang)", "Hybrid", "Off-Grid (Mandiri)"]
+        elif "Hotel" in tipe_bangunan: Rekomen = ["Hybrid (Backup 24Jam)", "On-Grid", "Off-Grid (Mandiri)"]
+        else: Rekomen = ["Hybrid (Canggih)", "On-Grid", "Off-Grid (Mandiri)"]
+        
+    with c2:
+        st.subheader("2. Kelistrikan")
+        fasa = st.selectbox("Fasa Listrik", ["1 Phase (220V)", "3 Phase (380V)"])
+        
+        # Logic default value: jika rumah 1jt, selain itu 10jt, tapi harus >= 10.000
+        default_val = 1000000 if "Rumah" in tipe_bangunan else 10000000
+        tagihan = st.number_input("Tagihan Listrik (Rp/Bulan)", min_value=10000, max_value=1000000000, value=default_val, step=10000)
+        
+        tarif = st.number_input("Tarif PLN (Rp/kWh)", value=1444 if "Rumah" in tipe_bangunan else 1699)
+
+    with c3:
+        st.subheader("3. Area Pasang")
+        lokasi = st.selectbox("Lokasi Instalasi", ["Atap Genteng (Miring)", "Dak Beton (Datar)", "Tanah (Grounding)"])
+        jam_matahari = st.slider("Sun Hours", 3.0, 6.0, 4.0)
+    
+    with c4:
+        st.subheader("4. Sistem PLTS")
+        tipe_sistem = st.selectbox("Pilih Sistem", Rekomen)
+        # Kalkulasi Target
+        kwh_bulan = tagihan / tarif
+        target_wh = (kwh_bulan / 30) * 1000
+        peak_load = (target_wh / 6) * 1.2 # Estimasi kasar
+        st.metric("Target Produksi", f"{target_wh/1000:.1f} kWh/hari")
+
+# =====================================================
+# 4. PEMILIHAN KOMPONEN
+# =====================================================
 st.markdown("---")
+st.subheader("🛠️ Pemilihan Komponen Utama")
+ck1, ck2, ck3, ck4 = st.columns(4)
 
-# =====================================================
-# INISIALISASI SESSION STATE
-# =====================================================
-if "beban" not in st.session_state:
-    st.session_state.beban = []
+with ck1:
+    pv_select = st.selectbox("Panel Surya", list(DB_PANEL.keys()))
+    data_pv = DB_PANEL[pv_select]
 
-# =====================================================
-# SIDEBAR - PARAMETER INPUT
-# =====================================================
-with st.sidebar:
-    st.header("🔧 Pengaturan Sistem")
-    sistem = st.radio("Pilih Sistem PLTS", ["On-Grid", "Off-Grid", "Hybrid"])
-    tegangan_sistem = st.selectbox("Tegangan Sistem DC (V)", [12, 24, 48], index=1)
-    jam_matahari = st.slider("Jam Matahari Efektif (PSH)", 3.0, 6.0, 4.5)
+with ck2:
+    # Filter Inverter Logic
+    phase_filter = 3 if "3 Phase" in fasa else 1
+    type_filter = "On-Grid" if "On-Grid" in tipe_sistem else "Hybrid" if "Hybrid" in tipe_sistem else "Off-Grid"
+    
+    # Logic filter diperbarui agar Hybrid juga muncul saat pilih Off-Grid (karena hybrid bisa offgrid)
+    inv_list = [k for k,v in DB_INVERTER.items() if v["phase"] == phase_filter and (type_filter in v["type"] or "Hybrid" in v["type"])]
+    if not inv_list: inv_list = list(DB_INVERTER.keys()) # Fallback
+    
+    inv_select = st.selectbox("Inverter", inv_list)
+    data_inv = DB_INVERTER[inv_select]
 
-    st.header("☀ Spesifikasi Panel")
-    jenis_panel = st.selectbox("Jenis Panel Surya", ["Monocrystalline (Efisien)", "Polycrystalline (Ekonomis)"])
-    panel_wp = st.number_input("Kapasitas 1 Panel (Wp)", value=550)
-    vmp_panel = st.number_input("Tegangan Panel (Vmp)", value=42.0)
-    imp_panel = st.number_input("Arus Panel (Imp)", value=13.0)
-    loss = st.slider("Loss Sistem (%)", 10, 50, 30)
-
-    st.header("🔋 Spesifikasi Baterai")
-    if sistem != "On-Grid":
-        tipe_baterai = st.selectbox("Pilih Teknologi Baterai", ["Lithium LiFePO4", "VRLA / AGM (Gel)"])
-        default_dod = 80 if tipe_baterai == "Lithium LiFePO4" else 50
-        dod = st.slider("Depth of Discharge (%)", 10, 90, default_dod)
-        cadangan_hari = st.slider("Cadangan Hari (Autonomy)", 1, 3, 1)
-        kapasitas_baterai_ah = st.number_input("Kapasitas 1 Baterai (Ah)", value=100)
-        tegangan_baterai_unit = st.selectbox("Tegangan 1 Baterai (V)", [12, 24, 48], index=0)
-        harga_baterai_per_unit = st.number_input("Harga 1 Unit Baterai (Rp)", value=2500000)
+with ck3:
+    if "On-Grid" in tipe_sistem:
+        st.info("Sistem On-Grid Tanpa Baterai")
+        data_bat = {"harga": 0, "volt": 0, "ah": 0}
+        bat_select = "-"
+        days_backup = 0
     else:
-        st.write("Sistem On-Grid tidak menggunakan baterai.")
+        # Off-Grid atau Hybrid pasti butuh baterai
+        bat_select = st.selectbox("Baterai", list(DB_BATTERY.keys()))
+        data_bat = DB_BATTERY[bat_select]
+        days_backup = st.number_input("Backup (Hari)", 0.2, 3.0, 0.5, step=0.1)
 
-    st.header("💰 Parameter Ekonomi")
-    tarif_pln = st.number_input("Tarif PLN (Rp/kWh)", value=1444)
-    harga_panel_per_unit = st.number_input("Harga 1 Unit Panel (Rp)", value=2200000)
-    harga_inverter = st.number_input("Harga Inverter (Rp)", value=5000000)
-    harga_scc = st.number_input("Harga SCC (Rp)", value=1500000)
-    biaya_instalasi = st.number_input("Biaya Instalasi & Rak (Rp)", value=3000000)
-
-    st.header("🔌 Input Beban Listrik")
-    with st.form("form_beban", clear_on_submit=True):
-        nama = st.text_input("Nama Peralatan")
-        daya = st.number_input("Daya (Watt)", min_value=0)
-        jumlah = st.number_input("Jumlah", min_value=1)
-        jam = st.number_input("Jam Pakai per Hari", min_value=0.0, max_value=24.0, step=0.5)
-        submit = st.form_submit_button("➕ Tambahkan Beban")
-        if submit and daya > 0 and jam > 0:
-            st.session_state.beban.append({"Peralatan": nama, "Daya (W)": daya, "Jumlah": jumlah, "Jam/Hari": jam})
-            st.rerun()
-
-    if st.button("🗑️ Reset Semua Beban"):
-        st.session_state.beban = []
-        st.rerun()
+with ck4:
+    # Logic: Jika Hybrid atau On-Grid biasanya built-in. Jika Pure Off-Grid Inverter, butuh SCC External
+    if "Hybrid" in data_inv["type"] or "On-Grid" in tipe_sistem:
+        scc_select = "Built-in (Integrated)"
+        data_scc = {"harga": 0, "amp": 0}
+        st.success("SCC sudah Built-in")
+    else:
+        # Masuk sini jika pilih Inverter tipe "Off-Grid" murni
+        scc_select = st.selectbox("SCC (Charge Controller)", list(DB_SCC.keys()))
+        data_scc = DB_SCC[scc_select]
 
 # =====================================================
-# PERHITUNGAN & TAMPILAN UTAMA
+# 5. ENGINE PERHITUNGAN
 # =====================================================
-if not st.session_state.beban:
-    st.info("⬅️ Masukkan beban listrik di sidebar untuk mulai mensimulasikan sistem PLTS Anda.")
-else:
-    # --- LOGIKA PERHITUNGAN ---
-    df = pd.DataFrame(st.session_state.beban)
-    df["Wh/Hari"] = df["Daya (W)"] * df["Jumlah"] * df["Jam/Hari"]
-    df["kWh/Hari"] = df["Wh/Hari"] / 1000
+# 1. Panel
+req_pv_wh = target_wh * 1.25
+jml_pv = math.ceil(req_pv_wh / (data_pv["wp"] * jam_matahari))
+total_wp = jml_pv * data_pv["wp"]
+biaya_pv = jml_pv * data_pv["harga"]
+
+# 2. Inverter
+jml_inv = math.ceil(peak_load / data_inv["watt"])
+jml_inv = max(1, jml_inv)
+biaya_inv = jml_inv * data_inv["harga"]
+
+# 3. Baterai
+biaya_bat = 0
+jml_bat_total = 0
+if "On-Grid" not in tipe_sistem:
+    req_wh_bat = (target_wh * days_backup) / (data_bat["dod"]/100)
+    if data_bat["volt"] == 200: # High Volt
+        jml_bat_total = math.ceil(req_wh_bat / (data_bat["volt"]*data_bat["ah"]))
+    else: # Low Volt
+        sys_volt = 48
+        jml_seri = 1 if data_bat["volt"] > sys_volt else sys_volt // data_bat["volt"]
+        jml_paralel = math.ceil((req_wh_bat/sys_volt) / data_bat["ah"])
+        jml_bat_total = int(jml_seri * jml_paralel)
+    biaya_bat = jml_bat_total * data_bat["harga"]
+
+# 4. Biaya Lain
+biaya_scc = data_scc["harga"] if scc_select != "Built-in (Integrated)" else 0
+lokasi_factor = 1.2 if "Beton" in lokasi else 1.3 if "Tanah" in lokasi else 1.0
+biaya_pasang = (3000000 + (jml_pv * 150000)) * lokasi_factor
+if "3 Phase" in fasa: biaya_pasang *= 1.5
+
+total_investasi = biaya_pv + biaya_inv + biaya_bat + biaya_scc + biaya_pasang
+hemat_thn = (total_wp * jam_matahari * 0.8 / 1000) * tarif * 365
+roi = total_investasi / hemat_thn if hemat_thn > 0 else 0
+
+# =====================================================
+# 6. VISUALISASI GRAFIK
+# =====================================================
+st.markdown("---")
+st.header("📈 Analisis Visual & Keuangan")
+
+col_grafik_kiri, col_grafik_kanan = st.columns([1, 2])
+
+# --- GRAFIK 1: PIE CHART (KOMPOSISI BIAYA) ---
+with col_grafik_kiri:
+    st.subheader("Distribusi Anggaran")
+    labels = ["Panel Surya", "Inverter", "Baterai", "SCC / Controller", "Instalasi & Material"]
+    values = [biaya_pv, biaya_inv, biaya_bat, biaya_scc, biaya_pasang]
     
-    energi_harian = df["kWh/Hari"].sum()
-    biaya_harian = energi_harian * tarif_pln
-    beban_puncak = (df["Daya (W)"] * df["Jumlah"]).sum()
-
-    total_wh_loss = (energi_harian * 1000) * (1 + loss / 100)
-    jumlah_panel = math.ceil((total_wh_loss / jam_matahari) / panel_wp)
-    biaya_panel_total = jumlah_panel * harga_panel_per_unit
-
-    biaya_baterai_total = 0
-    total_unit_baterai = 0
-    seri_bat = 0
-    paralel_bat = 0
-    if sistem != "On-Grid":
-        wh_storage = (energi_harian * 1000 * cadangan_hari) / (dod / 100)
-        seri_bat = tegangan_sistem // tegangan_baterai_unit
-        ah_total_req = wh_storage / tegangan_sistem
-        paralel_bat = math.ceil(ah_total_req / kapasitas_baterai_ah)
-        total_unit_baterai = max(1, seri_bat * paralel_bat)
-        biaya_baterai_total = total_unit_baterai * harga_baterai_per_unit
-
-    inverter_min = math.ceil(beban_puncak * 1.3)
-    scc_min = math.ceil((jumlah_panel * panel_wp) / tegangan_sistem * 1.2)
-    total_investasi = biaya_panel_total + biaya_baterai_total + harga_inverter + harga_scc + biaya_instalasi
-
-    # --- BAGIAN 1: DAFTAR BEBAN & KONSUMSI ---
-    st.header("1. 📋 Analisis Beban & Energi")
-    col_beban1, col_beban2 = st.columns([2, 1])
+    # Filter 0 values
+    clean_l = [l for l,v in zip(labels, values) if v > 0]
+    clean_v = [v for v in values if v > 0]
     
-    with col_beban1:
-        st.subheader("Daftar Peralatan Listrik")
-        st.dataframe(df, use_container_width=True)
+    fig_pie = go.Figure(data=[go.Pie(labels=clean_l, values=clean_v, hole=.4)])
+    fig_pie.update_layout(showlegend=False, margin=dict(t=0,b=0,l=0,r=0), height=300)
+    st.plotly_chart(fig_pie, use_container_width=True)
     
-    with col_beban2:
-        st.subheader("Estimasi Konsumsi & Biaya PLN")
-        data_pln = {
-            "Periode": ["Harian", "Bulanan (30 hr)", "Tahunan (365 hr)"],
-            "Energi (kWh)": [f"{energi_harian:.2f}", f"{energi_harian*30:.2f}", f"{energi_harian*365:.2f}"],
-            "Biaya PLN": [f"Rp {biaya_harian:,.0f}", f"Rp {biaya_harian*30:,.0f}", f"Rp {biaya_harian*365:,.0f}"]
-        }
-        st.table(pd.DataFrame(data_pln))
+    st.info(f"**Total Modal: Rp {total_investasi:,.0f}**")
 
-    st.markdown("---")
-
-    # --- BAGIAN 2: RINCIAN INVESTASI & DIAGRAM ---
-    st.header("2. 💰 Analisis Investasi")
-    col_inv1, col_inv2 = st.columns([1, 1])
-
-    with col_inv1:
-        st.subheader("Rincian Biaya Material")
-        rincian_biaya = [
-            {"Komponen": "Panel Surya", "Subtotal": biaya_panel_total},
-            {"Komponen": "Baterai", "Subtotal": biaya_baterai_total},
-            {"Komponen": "Inverter", "Subtotal": harga_inverter},
-            {"Komponen": "SCC", "Subtotal": harga_scc},
-            {"Komponen": "Instalasi & Rak", "Subtotal": biaya_instalasi},
-        ]
-        df_biaya = pd.DataFrame(rincian_biaya)
-        df_tampilan = df_biaya.copy()
-        df_tampilan["Subtotal"] = df_tampilan["Subtotal"].apply(lambda x: f"Rp {x:,.0f}")
-        st.table(df_tampilan)
-        st.metric("Total Investasi", f"Rp {total_investasi:,.0f}")
-
-    with col_inv2:
-        st.subheader("Distribusi Anggaran")
-        labels_list = df_biaya["Komponen"].tolist()
-        values_list = df_biaya["Subtotal"].tolist()
-        fig = go.Figure(data=[go.Pie(labels=labels_list, values=values_list, hole=.3)])
-        fig.update_layout(margin=dict(t=0, b=0, l=0, r=0))
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-
-    # --- BAGIAN 3: SPESIFIKASI TEKNIS ---
-    st.header("3. 📦 Detail Spesifikasi Komponen")
-    col_spec1, col_spec2 = st.columns(2)
-
-    with col_spec1:
-        st.info(f"### ☀ Panel Surya ({jenis_panel})")
-        st.write(f"- **Kapasitas Per Panel:** {panel_wp} Wp")
-        st.write(f"- **Jumlah Panel:** {jumlah_panel} Unit")
-        st.write(f"- **Total Kapasitas:** {jumlah_panel * panel_wp} Wp")
-        st.write(f"- **Arus Output Total (Imp):** {jumlah_panel * imp_panel:.2f} A")
-
-        st.info("### 🔌 Inverter & SCC")
-        st.write(f"- **Kapasitas Inverter:** Min {inverter_min} Watt (PSW)")
-        st.write(f"- **Rating Arus SCC:** Min {scc_min} Ampere")
-        st.write(f"- **Tegangan Sistem:** {tegangan_sistem} VDC")
-
-    with col_spec2:
-        if sistem != "On-Grid":
-            st.success(f"### 🔋 Bank Baterai ({tipe_baterai})")
-            st.write(f"- **Kapasitas Per Unit:** {kapasitas_baterai_ah} Ah / {tegangan_baterai_unit} V")
-            st.write(f"- **Konfigurasi:** {seri_bat} Seri x {paralel_bat} Paralel")
-            st.write(f"- **Total Unit:** {total_unit_baterai} Unit")
-            st.write(f"- **DoD Aman:** {dod}%")
-        else:
-            st.warning("### 🔋 Bank Baterai\nSistem On-Grid tidak menggunakan baterai.")
-
-        st.success("### 🏗️ Kabel & Keamanan")
-        arus_dc = (jumlah_panel * panel_wp) / tegangan_sistem
-        kabel = "4 mm²" if arus_dc < 25 else "6 mm²" if arus_dc < 45 else "10 mm²"
-        st.write(f"- **Arus DC Utama:** {arus_dc:.2f} A")
-        st.write(f"- **Ukuran Kabel:** Min {kabel}")
-        st.write(f"- **Proteksi:** MCB DC & Arrester Surya")
-
-    st.markdown("---")
-
-    # --- BAGIAN 4: KESIMPULAN ---
-    st.header("4. 📝 Kesimpulan Akhir")
-    payback = (total_investasi / (biaya_harian * 365)) if biaya_harian > 0 else 0
+# --- GRAFIK 2: CASHFLOW CHART (ROI) ---
+with col_grafik_kanan:
+    st.subheader(f"Proyeksi Balik Modal (ROI: {roi:.1f} Tahun)")
     
-    st.success(f"""
-    * **Kapasitas PLTS**: Sistem Anda membutuhkan **{jumlah_panel * panel_wp} Wp** untuk mengcover energi **{energi_harian:.2f} kWh/hari**.
-    * **Keuangan**: Dengan investasi sebesar **Rp {total_investasi:,.0f}**, titik balik modal (Payback Period) tercapai dalam **{payback:.1f} tahun**.
-    * **Rekomendasi**: Gunakan kabel minimal **{kabel}** dan pastikan inverter berjenis **Pure Sine Wave** untuk menjaga keawetan alat elektronik Anda.
-    """)
+    years = list(range(0, 21))
+    cashflow = [-total_investasi] # Tahun 0
+    cumulative = -total_investasi
+    
+    cf_data = [cumulative]
+    
+    for y in range(1, 21):
+        # Asumsi kenaikan tarif listrik 5% per tahun
+        saving_year = hemat_thn * ((1.05) ** (y-1))
+        cumulative += saving_year
+        cf_data.append(cumulative)
+        
+    fig_roi = go.Figure()
+    # Area Merah (Minus)
+    fig_roi.add_trace(go.Scatter(
+        x=years, y=cf_data, 
+        mode='lines+markers', 
+        name='Cashflow Bersih',
+        fill='tozeroy',
+        line=dict(color='green' if cf_data[-1] > 0 else 'red', width=3)
+    ))
+    
+    # Garis Nol (BEP)
+    fig_roi.add_hline(y=0, line_dash="dot", annotation_text="Titik Impas (BEP)", annotation_position="top left")
+    
+    fig_roi.update_layout(
+        xaxis_title="Tahun Ke-",
+        yaxis_title="Keuntungan Bersih (Rupiah)",
+        height=350,
+        margin=dict(t=10,b=10,l=10,r=10)
+    )
+    st.plotly_chart(fig_roi, use_container_width=True)
 
-st.caption("Kalkulator PLTS Pro Lengkap - Versi Stabil 2026")
+# =====================================================
+# 7. TABEL RINCIAN
+# =====================================================
+st.markdown("---")
+t1, t2 = st.tabs(["📋 Rincian RAB Lengkap", "🏢 Spesifikasi Teknis"])
+
+with t1:
+    df_rab = pd.DataFrame([
+        {"Komponen": f"Panel ({pv_select})", "Qty": f"{jml_pv}", "Total": biaya_pv},
+        {"Komponen": f"Inverter ({inv_select})", "Qty": f"{jml_inv}", "Total": biaya_inv},
+        {"Komponen": f"Baterai ({bat_select})", "Qty": f"{jml_bat_total}", "Total": biaya_bat},
+        {"Komponen": f"SCC ({scc_select})", "Qty": "1", "Total": biaya_scc},
+        {"Komponen": "Jasa Pasang, Kabel, Rak", "Qty": "1 Lot", "Total": biaya_pasang},
+    ])
+    df_rab = df_rab[df_rab["Total"] > 0]
+    st.table(df_rab.assign(Total=[f"Rp {x:,.0f}" for x in df_rab["Total"]]))
+
+with t2:
+    c_s1, c_s2, c_s3 = st.columns(3)
+    c_s1.success(f"**PV Generator:** {total_wp/1000:.1f} kWp ({jml_pv} Panel)")
+    c_s2.warning(f"**Inverter:** {jml_inv * data_inv['watt']/1000:.1f} kW ({fasa})")
+    if jml_bat_total > 0:
+        c_s3.info(f"**Storage:** {jml_bat_total*data_bat['ah']*data_bat['volt']/1000:.1f} kWh")
+    else:
+        c_s3.info("**Storage:** Tanpa Baterai")
